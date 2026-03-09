@@ -14,8 +14,6 @@ pipeline {
         VPS_IP = "103.149.177.39"
 
         PATH = "/usr/local/bin:/usr/bin:/bin:${env.PATH}"
-
-        GEMINI_API_KEY = "AIzaSyALUpcIQcRl3h6chr1uAh5Z42bLbW1tz0w"
     }
 
     stages {
@@ -67,17 +65,13 @@ pipeline {
         stage('Docker Build (CI)') {
             steps {
                 sh '''
+                echo "Building Docker Image..."
                 docker build -t ${DOCKERHUB_REPO}:latest .
                 '''
             }
         }
 
         stage('Push Image (CI)') {
-
-            when {
-                branch 'main'
-            }
-
             steps {
 
                 withCredentials([usernamePassword(
@@ -87,7 +81,10 @@ pipeline {
                 )]) {
 
                     sh '''
+                    echo "Login DockerHub..."
                     echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin
+
+                    echo "Push Docker Image..."
                     docker push ${DOCKERHUB_REPO}:latest
                     '''
                 }
@@ -98,34 +95,38 @@ pipeline {
 
             steps {
 
-                sshagent(['vps-ssh']) {
+                withCredentials([
+                    string(credentialsId: 'gemini-api-key', variable: 'GEMINI_API_KEY')
+                ]) {
 
-                    sh """
-                    ssh -o StrictHostKeyChecking=no root@${VPS_IP} '
+                    sshagent(['vps-ssh']) {
 
-                        echo "Stopping old container..."
-                        docker stop ${CONTAINER_NAME} || true
-                        docker rm ${CONTAINER_NAME} || true
+                        sh """
+                        ssh -o StrictHostKeyChecking=no root@${VPS_IP} '
 
-                        echo "Pulling latest image..."
-                        docker pull ${DOCKERHUB_REPO}:latest
+                            echo "Stopping old container..."
+                            docker stop ${CONTAINER_NAME} || true
+                            docker rm ${CONTAINER_NAME} || true
 
-                        echo "Running new container..."
+                            echo "Pulling latest image..."
+                            docker pull ${DOCKERHUB_REPO}:latest
 
-                        docker run -d \
-                        --name ${CONTAINER_NAME} \
-                        -p ${APP_PORT}:8000 \
-                        --restart unless-stopped \
-                        -v /root/chatbot-datasets:/app/datasets:ro \
-                        -e GEMINI_API_KEY=${GEMINI_API_KEY} \
-                        --health-cmd="curl -f http://localhost:8000 || exit 1" \
-                        --health-interval=30s \
-                        --health-timeout=10s \
-                        --health-retries=3 \
-                        ${DOCKERHUB_REPO}:latest
+                            echo "Running new container..."
 
-                    '
-                    """
+                            docker run -d \
+                            --name ${CONTAINER_NAME} \
+                            -p ${APP_PORT}:8000 \
+                            --restart unless-stopped \
+                            -v /root/chatbot-datasets:/app/datasets:ro \
+                            -e GEMINI_API_KEY=${GEMINI_API_KEY} \
+                            --health-cmd="curl -f http://localhost:8000 || exit 1" \
+                            --health-interval=30s \
+                            --health-timeout=10s \
+                            --health-retries=3 \
+                            ${DOCKERHUB_REPO}:latest
+                        '
+                        """
+                    }
                 }
             }
         }
@@ -133,15 +134,15 @@ pipeline {
         stage('API Health Check') {
             steps {
                 sh '''
-                echo "Waiting API..."
-                sleep 10
+                echo "Waiting API to start..."
+                sleep 15
 
                 curl -f http://${VPS_IP}:${APP_PORT} || exit 1
                 '''
             }
         }
 
-        stage('Debug') {
+        stage('Debug Info') {
             steps {
                 sh 'docker --version'
                 sh 'docker ps -a'
