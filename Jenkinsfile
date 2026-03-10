@@ -96,13 +96,21 @@ pipeline {
             steps {
 
                 withCredentials([
-                    string(credentialsId: 'gemini-api-key', variable: 'GEMINI_API_KEY')
+                    string(credentialsId: 'gemini-api-key', variable: 'GEMINI_API_KEY'),
+                    usernamePassword(
+                        credentialsId: 'dockerhub-creds',
+                        usernameVariable: 'DOCKER_USER',
+                        passwordVariable: 'DOCKER_PASS'
+                    )
                 ]) {
 
                     sshagent(['vps-ssh']) {
 
                         sh """
                         ssh -o StrictHostKeyChecking=no root@${VPS_IP} '
+
+                            echo "Login DockerHub..."
+                            echo ${DOCKER_PASS} | docker login -u ${DOCKER_USER} --password-stdin
 
                             echo "Stopping old container..."
                             docker stop ${CONTAINER_NAME} || true
