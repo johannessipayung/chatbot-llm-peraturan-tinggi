@@ -20,3 +20,16 @@ node_modules
 .DS_Store
 
 tests
+.cache
+pytest_cache
+.mypy_cache
+.ipynb_checkpoints
+
+notebooks
+docs
+
+*.sqlite3
+*.db
+
+.vscode
+.idea
